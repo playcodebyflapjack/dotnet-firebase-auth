@@ -118,7 +118,8 @@ namespace web_dot_net_core.Controllers
             }
             catch (Exception ex)
             {
-                throw ex;
+                Console.Write(ex.StackTrace);
+                throw;
             }
         }
 
