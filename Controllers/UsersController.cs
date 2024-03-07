@@ -1,91 +1,84 @@
-
-
-
 using System.Reflection.Metadata.Ecma335;
+using System.Text.Json;
 using FirebaseAdmin.Auth;
+using FirebaseAdmin.Auth.Hash;
 using Google.Api.Gax;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
 
 namespace web_dot_net_core.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
-    public class UsersController
-    {
 
-        [HttpPost()]
+    [Route("api/[controller]")]
+    public class UsersController  : ControllerBase
+    {
+        private readonly ILogger<UsersController> _logger;
+        private readonly ServicesFirebase servicesFirebase;
+        private readonly string keyServiceApi = "";
+        public UsersController(ILogger<UsersController> logger )
+        {
+            this.servicesFirebase = new ServicesFirebase(keyServiceApi);
+            this._logger = logger;
+        }
+
+        [HttpPost]
         public async Task<ActionResult<string>> Post([FromBody] User user)
         {
-            UserRecordArgs item = new UserRecordArgs();
-            item.DisplayName = user.Name;
-            item.Email = user.Email;
-            item.Password = user.Password;
-            item.EmailVerified = false;
-
-            UserRecord userRecord = await FirebaseAuth.DefaultInstance.CreateUserAsync(item);
-
-            // gen token
-
-            string token = userRecord.Uid;
-
-            string customToken = await FirebaseAuth.DefaultInstance.CreateCustomTokenAsync(token);
-          
-            Console.WriteLine($"User Uid: {token}");
-            Console.WriteLine($"User Token: {customToken}");
-
-            return "Successfully created new user";
+            UserRecord userRecord = await servicesFirebase.CreateUserAsync(user);
+        
+            return JsonSerializer.Serialize(userRecord);
         }
 
- 
-        [HttpPost(Name ="login")]
-        public async Task<ActionResult<string>> PostLogin([FromBody] User user)
-        {
-             FirebaseToken  decodedToken = FirebaseAuth.DefaultInstance.VerifyIdTokenAsync(user.Token);
-
-             string uid = decodedToken.Uid;
-
-            return "uid";
-        }
-      
-
-        [HttpGet()]
+         [HttpGet]
         public async Task<ActionResult<string>> Get([FromBody] User user)
         {
-            UserRecord userRecord = await FirebaseAuth.DefaultInstance.GetUserByEmailAsync(user.Email);
-            ExportedUserRecord userPassword = await getPasswordByUserAsync(userRecord);
-
-            if (userPassword != null)
+            try
             {
-                Console.WriteLine($"User Password: {userPassword.PasswordHash}");
+                UserRecord userRecord = await FirebaseAuth.DefaultInstance.GetUserByEmailAsync(user.Email);
+              
+                return new JsonResult(userRecord);
             }
-            
-
-            return "";
+            catch(Exception error)
+            {
+                return error.Message;
+            }
         }
 
-        private async Task<ExportedUserRecord?> getPasswordByUserAsync(UserRecord filterUser)
+        [HttpPut("{uid}")]
+        public async Task<ActionResult<string>> Update(string uid,[FromBody] User user)
         {
-            string uid = filterUser.Uid;
+            UserRecord userRecord = await servicesFirebase.UpdateUser(uid,user);
 
-            var pagedEnumerable = FirebaseAuth.DefaultInstance.ListUsersAsync(null);
-            var responses = pagedEnumerable.AsRawResponses().GetAsyncEnumerator();
-            while (await responses.MoveNextAsync())
-            {
-                ExportedUserRecords response = responses.Current;
-                foreach (ExportedUserRecord user in response.Users)
-                {
-                    Console.WriteLine($"User: {user.Uid}");
-                    Console.WriteLine($"filterUser: {uid}");
-
-                    if (user.Uid.Equals(uid))
-                    {
-                        return user;
-                    }
-
-                }
-            }
-            return null;
+            return new JsonResult(userRecord);
         }
+
+
+        [HttpDelete("{uid}")]
+        public async Task<ActionResult<string>> Delete(string uid)
+        {
+            await servicesFirebase.DeleteUserAsync(uid);
+
+            return "Successfully deleted user.";
+        }
+
+
+        
+        [HttpPost("/api/login")]
+        public async Task<ActionResult<string>> PostLogin([FromBody] User user)
+        {
+            try
+            {
+                JObject responseJson = await servicesFirebase.Login(user);
+                return new JSONNetResult(responseJson);
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine(error);
+                return error.Message;
+            }
+        }
+
     }
 
 }
